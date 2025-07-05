@@ -1,0 +1,139 @@
+<!-- templates/registro_group.html -->
+{% extends "layout.html" %}
+
+{% block title %}Registro de Producción - {{ group_name }}{% endblock %}
+{% block page_header %}Registro de Producción {{ group_name }}{% endblock %}
+
+{% block content %}
+<div class="content-section">
+    <h4 class="mb-4">Consultar Registro por Fecha</h4>
+    <form method="GET" action="{{ url_for('registro', group=group_name.lower()) }}">
+        <div class="form-row align-items-end">
+            <div class="col-md-4">
+                <label for="fecha" class="font-weight-bold">Selecciona una fecha:</label>
+                <input type="date" class="form-control" id="fecha" name="fecha" value="{{ selected_date }}">
+            </div>
+            <div class="col-md-auto"><button type="submit" class="btn btn-primary">Consultar</button></div>
+            <div class="col-md-auto"><a href="{{ url_for('registro', group=group_name.lower()) }}" class="btn btn-info">Hoy</a></div>
+            <div class="col-md-auto"><a href="{{ url_for('export_excel', group=group_name, fecha=selected_date) }}" class="btn btn-success"><i class="fas fa-file-excel mr-1"></i> Exportar</a></div>
+        </div>
+    </form>
+</div>
+
+{% if production_data %}
+<div class="content-section mt-4">
+    <h5 class="mb-3">Mostrando datos para el: <span class="font-weight-bold" style="color: #008F87;">{{ selected_date }}</span></h5>
+    <div class="table-responsive">
+        <table class="table table-bordered">
+            <thead>
+                <tr class="text-center" style="background-color: #f8f9fa;">
+                    <th style="text-align: left;">Área</th>
+                    <th>Pronóstico Total</th>
+                    {% for turno in nombres_turnos %}
+                    <th>Pron. {{ turno.split(' ')[1] }}</th>
+                    <th style="background-color: #e9ecef;">Total {{ turno.split(' ')[1] }}</th>
+                    {% endfor %}
+                    <th style="background-color: #dee2e6;">Total Producido</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for area in areas if area != 'Output' %}
+                    {% set area_data = production_data.get(area, {}) %}
+                    {% set total_pronostico = namespace(value=0) %}
+                    {% set total_producido = namespace(value=0) %}
+                <tr>
+                    <td style="font-weight: 600;">{{ area }}</td>
+                    {% for turno in nombres_turnos %}{% set total_pronostico.value = total_pronostico.value + area_data.get(turno, {}).get('pronostico', 0) %}{% endfor %}
+                    <td class="text-center font-weight-bold">{{ total_pronostico.value }}</td>
+                    {% for turno in nombres_turnos %}
+                        {% set pronostico = area_data.get(turno, {}).get('pronostico', 0) %}
+                        {% set producido = area_data.get(turno, {}).get('producido', 0) %}
+                        {% set total_producido.value = total_producido.value + producido %}
+                        {% set cell_class = 'shortfall-cell' if producido < pronostico and pronostico > 0 else '' %}
+                        <td class="text-center">{{ pronostico }}</td>
+                        <td class="text-center font-weight-bold {{ cell_class }}" style="background-color: #f1f3f5;">{{ producido }}</td>
+                    {% endfor %}
+                    <td class="text-center font-weight-bold" style="background-color: #e9ecef;">{{ total_producido.value }}</td>
+                </tr>
+                {% endfor %}
+                
+                {% if output_data and (output_data.pronostico or output_data.output) %}
+                <tr style="background-color: #f2f2f2;">
+                    <td style="font-weight: 600;">Output</td>
+                    <td class="text-center font-weight-bold">{{ output_data.pronostico }}</td>
+                    <td colspan="{{ nombres_turnos|length * 2 }}" class="text-center text-muted">N/A</td>
+                    <td class="text-center font-weight-bold" style="background-color: #e9ecef;">{{ output_data.output }}</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{% if production_data %}
+<div class="content-section mt-4">
+    <h4 class="mb-3">Gráfica de Producción vs. Meta</h4>
+    <div style="height: 400px; position: relative;"><canvas id="productionChart"></canvas></div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+{% if production_data %}
+document.addEventListener('DOMContentLoaded', function() {
+    try {
+        const productionData = {{ production_data | tojson }};
+        const outputData = {{ output_data | tojson }};
+        const areas = {{ (areas | reject('equalto', 'Output') | list) | tojson }};
+        // --- MODIFICADO: Usar la meta pasada desde Flask ---
+        const metaProduccion = {{ meta }};
+
+        const labels = [...areas, 'Output'];
+        const totalProducidoData = [];
+        
+        areas.forEach(area => {
+            let totalProducido = 0;
+            Object.values(productionData[area] || {}).forEach(turno => { totalProducido += turno.producido || 0; });
+            totalProducidoData.push(totalProducido);
+        });
+        totalProducidoData.push(Number(outputData.output) || 0);
+
+        const metaData = Array(labels.length).fill(metaProduccion);
+
+        const ctx = document.getElementById('productionChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Producción Total',
+                    data: totalProducidoData,
+                    backgroundColor: 'rgba(36, 184, 23, 0.8)',
+                    order: 2
+                }, {
+                    type: 'line',
+                    label: 'Meta (' + metaProduccion + ')',
+                    data: metaData,
+                    borderColor: 'rgba(255, 159, 64, 1)',
+                    borderWidth: 3,
+                    fill: false,
+                    order: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true, title: { display: true, text: 'Unidades Producidas' } } },
+                plugins: { title: { display: true, text: 'Producción por Área vs. Meta del Día', font: { size: 16 } } }
+            }
+        });
+    } catch (e) {
+        console.error("Error al crear la gráfica de {{ group_name }}:", e);
+        document.getElementById('productionChart').parentElement.innerHTML = '<div class="alert alert-danger">Ocurrió un error al generar la gráfica.</div>';
+    }
+});
+{% endif %}
+</script>
+{% endblock %}

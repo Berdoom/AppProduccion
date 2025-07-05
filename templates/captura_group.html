@@ -1,0 +1,158 @@
+{% extends "layout.html" %}
+
+{% block title %}Captura de Producción - {{ group_name }}{% endblock %}
+{% block page_header %}Captura de Producción {{ group_name }}{% endblock %}
+
+{% block content %}
+<div class="content-section">
+    <!-- Se añaden atributos data-* para que JavaScript pueda acceder a las URLs y datos necesarios -->
+    <form id="productionForm" action="{{ url_for('captura', group=group_name.lower()) }}" method="POST" data-submit-reason-url="{{ url_for('submit_reason') }}" data-group="{{ group_name }}" data-baseUrl="{{ url_for('captura', group=group_name.lower()) }}">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <div class="form-group row align-items-center mb-4">
+            <label for="fecha" class="col-auto col-form-label font-weight-bold">Fecha:</label>
+            <div class="col-sm-4">
+                <!-- El onchange ahora llamará a una función JS para recargar la página con la nueva fecha -->
+                <input type="date" class="form-control" id="fecha" name="fecha" value="{{ selected_date | e }}" onchange="handleDateChange()">
+            </div>
+        </div>
+        
+        <!-- Tabla para áreas con turnos -->
+        <h4 class="mt-4">Producción por Área</h4>
+        <div class="table-responsive-wrapper">
+            <table class="table table-bordered production-table">
+                <thead>
+                    <tr>
+                        <th rowspan="2" class="area-name">Área</th>
+                        <th rowspan="2">Pronóstico<br>Total</th>
+                        {% for turno_name in nombres_turnos %}
+                            <th colspan="{{ 1 + horas_turno[turno_name] | length + 1 }}">{{ turno_name }}</th>
+                        {% endfor %}
+                        <th rowspan="2">Total<br>Producido</th>
+                    </tr>
+                    <tr>
+                        {% for turno_name in nombres_turnos %}
+                            <th>Prono.</th>
+                            {% for hora in horas_turno[turno_name] %}
+                                <th>{{ hora }}</th>
+                            {% endfor %}
+                            <th>Total Turno</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for area in areas if area != 'Output' %}
+                    <tr data-area-slug="{{ area | slug }}">
+                        <td class="area-name">{{ area }}</td>
+                        <td class="total-column"><span id="total_pronostico_area_{{ area | slug }}">{{ data.get(area, {}).get('total_pronostico_area', 0) }}</span></td>
+                        {% for turno_name in nombres_turnos %}
+                            <td>
+                                <input type="number" name="pronostico_{{ area | slug }}_{{ turno_name | slug }}"
+                                       value="{{ data.get(area, {}).get('Pronostico_' + (turno_name | slug), '') | e }}"
+                                       min="0" class="pronostico-turno-input"
+                                       oninput="calculateTotals('{{ area | slug }}')">
+                            </td>
+                            {% for hora in horas_turno[turno_name] %}
+                                <td>
+                                    <input type="number" name="produccion_{{ area | slug }}_{{ hora }}"
+                                           value="{{ data.get(area, {}).get('Produccion_' + hora, '') | e }}"
+                                           min="0" oninput="calculateTotals('{{ area | slug }}')">
+                                </td>
+                            {% endfor %}
+                            <td class="turno-total-cell">
+                                <span id="total_produccion_turno_{{ area | slug }}_{{ turno_name | slug }}">{{ data.get(area, {}).get('total_produccion_' + (turno_name | slug), 0) }}</span>
+                                {% if data.get(area, {}).get('needs_reason_' + (turno_name | slug)) %}
+                                    <button type="button" class="btn btn-warning btn-sm mt-1" title="Registrar razón" data-toggle="modal" data-target="#reasonModal" data-area-name="{{ area | e }}" data-date="{{ selected_date | e }}" data-turno-name="{{ turno_name | e }}" onclick="setReasonModalData(this)">
+                                       <i class="fas fa-exclamation-triangle fa-fw"></i>
+                                    </button>
+                                {% elif data.get(area, {}).get('razon_desviacion_' + (turno_name | slug)) %}
+                                    <span class="badge-success-reason">OK</span>
+                                {% endif %}
+                            </td>
+                        {% endfor %}
+                        <td class="total-column">
+                            <span id="total_produccion_area_{{ area | slug }}">{{ data.get(area, {}).get('total_produccion_area', 0) }}</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Tabla para Output -->
+        <h4 class="mt-5">Producción Final (Output)</h4>
+        <div class="table-responsive-wrapper">
+             <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th style="width: 15%;">Área</th>
+                        <th>Pronóstico Diario</th>
+                        <th>Output Diario</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="font-weight: 600;">Output</td>
+                        <td>
+                            <input type="number" name="pronostico_output" class="form-control" value="{{ output_data.pronostico | e }}" min="0">
+                        </td>
+                        <td>
+                            <input type="number" name="produccion_output" class="form-control" value="{{ output_data.output | e }}" min="0">
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="text-center mt-4">
+             <button type="submit" class="btn btn-lg btn-guardar">Guardar Todos los Cambios</button>
+        </div>
+    </form>
+</div>
+
+<!-- Modals para feedback y razones -->
+<div class="modal fade" id="reasonModal" tabindex="-1" aria-labelledby="reasonModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="reasonModalLabel">Razón de Desviación para <strong id="modalAreaName"></strong> - <strong id="modalTurnoName"></strong></h5>
+                <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">×</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="modalDate"><input type="hidden" id="modalArea"><input type="hidden" id="modalTurno">
+                <div class="form-group">
+                    <label for="reasonText">Explica la razón de la desviación:</label>
+                    <textarea class="form-control" id="reasonText" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-primary" onclick="submitReason()">Enviar</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="feedbackModal" tabindex="-1" aria-labelledby="feedbackModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div id="feedbackModalHeader" class="modal-header">
+                <h5 class="modal-title" id="feedbackModalLabel"></h5>
+                <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">×</span></button>
+            </div>
+            <div class="modal-body" id="feedbackModalBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Se pasan las variables de Python a JavaScript para que los scripts puedan usarlas -->
+<script>
+    const AREAS_JS = {{ (areas | reject('equalto', 'Output') | list) | tojson }};
+    const HORAS_TURNO_JS = {{ horas_turno | tojson }};
+    const NOMBRES_TURNOS_JS = {{ nombres_turnos | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/captura.js') }}"></script>
+{% endblock %}

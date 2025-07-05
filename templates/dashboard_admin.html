@@ -1,0 +1,94 @@
+<!-- templates/dashboard_admin.html -->
+{% extends "layout.html" %}
+
+{% block title %}Dashboard Administrador{% endblock %}
+
+{% block page_header %}Panel de Administrador{% endblock %}
+
+{% block content %}
+<div class="alert alert-secondary">
+    Mostrando resumen del día: <strong>{{ today }}</strong>
+</div>
+
+<div class="row">
+    <div class="col-lg-6 mb-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Resumen General IHP</h4>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <p class="card-text mb-1">Pronóstico Total:</p>
+                        <h3 class="card-title"><strong>{{ ihp_data.pronostico }}</strong></h3>
+                    </div>
+                    <div>
+                        <p class="card-text mb-1">Producción Total:</p>
+                        <h3 class="card-title"><strong>{{ ihp_data.producido }}</strong></h3>
+                    </div>
+                    <div class="text-right">
+                        {% if ihp_data.trend == 'up' %}
+                            <i class="fas fa-arrow-up fa-2x text-success" title="Producción subió vs ayer"></i>
+                        {% elif ihp_data.trend == 'down' %}
+                             <i class="fas fa-arrow-down fa-2x text-danger" title="Producción bajó vs ayer"></i>
+                        {% else %}
+                             <i class="fas fa-minus fa-2x text-muted" title="Producción estable"></i>
+                        {% endif %}
+                    </div>
+                </div>
+                <hr>
+                <p><strong>Eficiencia del Día:</strong></p>
+                <div class="progress" style="height: 25px;">
+                    <div class="progress-bar" role="progressbar" style="width: {{ ihp_data.eficiencia }}%; background-color: #00B2A9;" aria-valuenow="{{ ihp_data.eficiencia }}" aria-valuemin="0" aria-valuemax="100">
+                        <strong>{{ ihp_data.eficiencia }}%</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-light">
+                 <a href="{{ url_for('captura', group='ihp') }}" class="btn btn-outline-primary">Capturar IHP</a>
+                 <a href="{{ url_for('registro', group='ihp') }}" class="btn btn-outline-secondary">Ver Registro IHP</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6 mb-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-header bg-info text-white">
+                <h4 class="mb-0">Resumen General FHP</h4>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <p class="card-text mb-1">Pronóstico Total:</p>
+                        <h3 class="card-title"><strong>{{ fhp_data.pronostico }}</strong></h3>
+                    </div>
+                    <div>
+                        <p class="card-text mb-1">Producción Total:</p>
+                        <h3 class="card-title"><strong>{{ fhp_data.producido }}</strong></h3>
+                    </div>
+                    <div class="text-right">
+                        {% if fhp_data.trend == 'up' %}
+                            <i class="fas fa-arrow-up fa-2x text-success" title="Producción subió vs ayer"></i>
+                        {% elif fhp_data.trend == 'down' %}
+                             <i class="fas fa-arrow-down fa-2x text-danger" title="Producción bajó vs ayer"></i>
+                        {% else %}
+                             <i class="fas fa-minus fa-2x text-muted" title="Producción estable"></i>
+                        {% endif %}
+                    </div>
+                </div>
+                <hr>
+                <p><strong>Eficiencia del Día:</strong></p>
+                <div class="progress" style="height: 25px;">
+                    <div class="progress-bar bg-info" role="progressbar" style="width: {{ fhp_data.eficiencia }}%;" aria-valuenow="{{ fhp_data.eficiencia }}" aria-valuemin="0" aria-valuemax="100">
+                        <strong>{{ fhp_data.eficiencia }}%</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-light">
+                 <a href="{{ url_for('captura', group='fhp') }}" class="btn btn-outline-info">Capturar FHP</a>
+                 <a href="{{ url_for('registro', group='fhp') }}" class="btn btn-outline-secondary">Ver Registro FHP</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

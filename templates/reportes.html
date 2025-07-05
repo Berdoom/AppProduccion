@@ -1,0 +1,117 @@
+{% extends "layout.html" %}
+
+{% block title %}Reporte de Producción{% endblock %}
+{% block page_header %}Reporte de Producción{% endblock %}
+
+{% block content %}
+<div class="content-section">
+    <form id="reportForm" method="GET" action="{{ url_for('reportes') }}">
+        <div class="form-row align-items-end">
+            <!-- Selector de Grupo: Deshabilitado para no-admins -->
+            <div class="form-group col-md-2">
+                <label for="group">Grupo:</label>
+                <select id="group" name="group" class="form-control" {% if not is_admin %}disabled{% endif %}>
+                    <option value="IHP" {% if group == 'IHP' %}selected{% endif %}>IHP</option>
+                    <option value="FHP" {% if group == 'FHP' %}selected{% endif %}>FHP</option>
+                </select>
+            </div>
+
+            <!-- Tipo de Reporte -->
+            <div class="form-group col-md-3">
+                <label for="type">Tipo de Reporte:</label>
+                <select id="type" name="type" class="form-control">
+                    <option value="monthly" {% if report_type == 'monthly' %}selected{% endif %}>Mensual (desglose por Semanas)</option>
+                    <option value="yearly" {% if report_type == 'yearly' %}selected{% endif %}>Anual (desglose por Meses)</option>
+                </select>
+            </div>
+
+            <!-- Selectores de Fecha (dinámicos) -->
+            <div class="form-group col-md-2" id="year-selector-div">
+                <label for="year">Año:</label>
+                <select id="year" name="year" class="form-control">
+                    {% for y in range(2024, 2031) %}
+                    <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group col-md-2" id="month-selector-div" style="display: none;">
+                <label for="month">Mes:</label>
+                <select id="month" name="month" class="form-control">
+                    {% for m in range(1, 13) %}
+                    <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Botón -->
+            <div class="form-group col-md-auto">
+                <button type="submit" class="btn btn-primary">Generar Reporte</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="content-section">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="mb-0">Mostrando reporte para {{ group }}: <span class="text-success">{{ period_label }}</span></h4>
+        <div>
+            <span class="mr-3">
+                <strong>Total del Período: {{ "{:,.0f}".format(total_current) }}</strong>
+            </span>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover text-center">
+            <thead class="thead-light">
+                <tr>
+                    <th class="text-left" style="vertical-align: middle;">Área</th>
+                    {% for col in columns %}
+                    <th>{{ col | capitalize }}</th>
+                    {% endfor %}
+                    <th class="bg-dark text-white" style="vertical-align: middle;">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for area, values in data.items() %}
+                <tr>
+                    <td class="text-left font-weight-bold">{{ area }}</td>
+                    {% for col in columns %}
+                    <td>{{ "{:,.0f}".format(values.get(col, 0)) }}</td>
+                    {% endfor %}
+                    <td class="bg-light font-weight-bold">{{ "{:,.0f}".format(values.get('Total', 0)) }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="{{ columns|length + 2 }}" class="text-center text-muted py-5">No se encontraron datos para este período.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const typeSelector = document.getElementById('type');
+    const monthDiv = document.getElementById('month-selector-div');
+
+    function toggleSelectors() {
+        const type = typeSelector.value;
+        
+        if (type === 'monthly') {
+            monthDiv.style.display = 'block';
+        } else { // yearly
+            monthDiv.style.display = 'none';
+        }
+    }
+
+    typeSelector.addEventListener('change', toggleSelectors);
+    
+    // Llamar a la función al cargar la página para establecer el estado inicial correcto
+    toggleSelectors(); 
+});
+</script>
+{% endblock %}
