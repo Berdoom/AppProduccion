@@ -1,6 +1,6 @@
 import os
 from sqlalchemy import create_engine, Column, Integer, String, Text, UniqueConstraint
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker, declarative_base, scoped_session
 from werkzeug.security import generate_password_hash
 
 # --- CONFIGURACIÓN DE BASE DE DATOS ---
@@ -12,8 +12,15 @@ try:
     else:
         engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
         
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    # Crea una fábrica de sesiones
+    session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    # Crea una sesión con ámbito para asegurar que cada hilo/solicitud tenga su propia sesión
+    db_session = scoped_session(session_factory)
+
     Base = declarative_base()
+    # Asocia la sesión a la Base para que las consultas funcionen
+    Base.query = db_session.query_property()
+
     print("Conexión a la base de datos establecida exitosamente.")
 
 except Exception as e:
@@ -21,7 +28,6 @@ except Exception as e:
     exit(1)
 
 # --- DEFINICIÓN DE LAS TABLAS (MODELOS) ---
-# (Las clases de las tablas no cambian, se omiten por brevedad)
 class Pronostico(Base):
     __tablename__ = 'pronosticos'
     id = Column(Integer, primary_key=True, index=True)
@@ -82,7 +88,8 @@ def init_db():
         Base.metadata.create_all(bind=engine)
         print("Esquema inicializado.")
 
-        db = SessionLocal()
+        # Usamos la sesión con ámbito para las operaciones
+        db = db_session()
         print("Verificando usuarios iniciales...")
         initial_users = [
             ('ihp_user', 'ihp_pass', 'IHP'),
@@ -100,6 +107,9 @@ def init_db():
         
         db.commit()
         print("Verificación de usuarios completada.")
-        db.close()
+        db_session.remove() # Cerramos la sesión
     except Exception as e:
         print(f"Ocurrió un error durante la inicialización de la base de datos: {e}")
+        db_session.rollback()
+
+# NO LLAMAR A init_db() AQUÍ. Se llama desde app.py
