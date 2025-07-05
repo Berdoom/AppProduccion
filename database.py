@@ -1,29 +1,28 @@
 import os
-from sqlalchemy import create_engine, Column, Integer, String, Text, UniqueConstraint, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import sessionmaker, declarative_base
 from werkzeug.security import generate_password_hash
 
-# --- CONFIGURACIÓN DE LA BASE DE DATOS SQLITE ---
-# SQLite no necesita usuario, contraseña, host o puerto. Solo un nombre de archivo.
-DB_NAME = "produccion.db"
-DATABASE_URL = f"sqlite:///{DB_NAME}"
-
-# --- ANTERIOR CONFIGURACIÓN MYSQL (Comentada por si se necesita en el futuro) ---
-# DB_USER = os.environ.get("DB_USER", "GCL1909")
-# DB_PASSWORD = os.environ.get("DB_PASSWORD", "n1D3c$#pro")
-# DB_HOST = os.environ.get("DB_HOST", "localhost")
-# DB_PORT = os.environ.get("DB_PORT", "3306")
-# DB_NAME_MYSQL = os.environ.get("DB_NAME", "produccion")
-# DATABASE_URL_MYSQL = f"mysql+mysqlconnector://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME_MYSQL}"
+# --- NUEVA CONFIGURACIÓN DE BASE DE DATOS PARA PRODUCCIÓN ---
+# Lee la variable de entorno 'DATABASE_URL' que nos da Render.
+# Si no la encuentra, usa la base de datos SQLite local (para desarrollo).
+DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///produccion.db')
 
 # --- CONFIGURACIÓN DEL MOTOR DE SQLALCHEMY ---
 try:
-    # El argumento 'connect_args' es CRUCIAL para que SQLite funcione bien con Flask.
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+    # Si la URL es de Postgres (producción), se conecta de una forma.
+    if DATABASE_URL.startswith('postgres'):
+        engine = create_engine(DATABASE_URL)
+    # Si no, usa la configuración para SQLite (local).
+    else:
+        engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+        
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     Base = declarative_base()
+    print("Conexión a la base de datos establecida exitosamente.")
+
 except Exception as e:
-    print(f"Error al conectar con la base de datos SQLite: {e}")
+    print(f"Error al conectar con la base de datos: {e}")
     exit(1)
 
 
@@ -83,36 +82,17 @@ class OutputData(Base):
     __table_args__ = (UniqueConstraint('fecha', 'grupo', name='_fecha_grupo_uc'),)
 
 
-def reset_database():
+def init_db_main():
     """
-    Borra todas las tablas y las vuelve a crear.
+    Crea las tablas en la base de datos si no existen
+    y añade los usuarios iniciales.
     """
-    try:
-        print("--- INICIANDO REINICIO DE BASE DE DATOS SQLITE ---")
-        print("Borrando todas las tablas existentes...")
-        Base.metadata.drop_all(bind=engine)
-        print("Tablas borradas exitosamente.")
-        
-        print("Creando nuevas tablas desde cero...")
-        Base.metadata.create_all(bind=engine)
-        print("Nuevas tablas creadas exitosamente.")
-        print(f"Base de datos '{DB_NAME}' creada/reiniciada.")
-        print("--- REINICIO COMPLETADO ---")
-    except Exception as e:
-        print(f"Ocurrió un error durante el reinicio de la base de datos: {e}")
-
-
-def init_db():
-    """
-    Reinicia la base de datos y añade los usuarios iniciales.
-    """
-    # --- PASO 1: Reiniciar la base de datos (borrar y crear tablas) ---
-    reset_database()
-
-    # --- PASO 2: Añadir usuarios iniciales ---
+    # Crea todas las tablas
+    Base.metadata.create_all(bind=engine)
+    
     db = SessionLocal()
     try:
-        print("\nCreando usuarios iniciales...")
+        print("\nVerificando usuarios iniciales...")
         initial_users = [
             ('ihp_user', 'ihp_pass', 'IHP'),
             ('fhp_user', 'fhp_pass', 'FHP'),
@@ -128,16 +108,17 @@ def init_db():
                 print(f"Usuario '{username}' creado.")
         
         db.commit()
-        print("¡Usuarios iniciales creados correctamente!")
+        print("¡Verificación de usuarios completada!")
 
     except Exception as e:
-        print(f"Ocurrió un error durante la creación de usuarios: {e}")
+        print(f"Ocurrió un error durante la inicialización de la base de datos: {e}")
         db.rollback()
     finally:
         db.close()
-        print("\n¡Proceso de inicialización finalizado!")
-
 
 if __name__ == '__main__':
     # Esta sección se ejecuta solo cuando corres el script directamente
-    init_db()
+    # para inicializar la base de datos.
+    print("Inicializando la base de datos...")
+    init_db_main()
+    print("¡Proceso de inicialización finalizado!")
