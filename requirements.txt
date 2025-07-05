@@ -1,0 +1,8 @@
+Flask
+SQLAlchemy
+Werkzeug
+pandas
+matplotlib
+numpy
+gunicorn
+xlsxwriter
