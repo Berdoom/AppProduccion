@@ -6,3 +6,4 @@ matplotlib
 numpy
 gunicorn
 xlsxwriter
+psycopg2-binary
