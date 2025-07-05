@@ -1,3 +1,4 @@
+import os
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_file, abort
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -12,27 +13,21 @@ import numpy as np
 import calendar
 import locale
 
-# --- Configurar locale para español (para nombres de meses y días) ---
-try:
-    locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')
-except locale.Error:
-    try:
-        locale.setlocale(locale.LC_TIME, 'Spanish_Spain')
-    except locale.Error:
-        print("Locale 'es_ES' no encontrado, usando el default.")
-
-
-# --- Importaciones para SQLAlchemy y SQLite ---
+# --- Importación específica para PostgreSQL ---
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy import create_engine, func, exc, literal_column
-from sqlalchemy.orm import sessionmaker, scoped_session
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from database import Base, Usuario, Pronostico, ProduccionCaptura, ActivityLog, OutputData, DATABASE_URL, engine, init_db
 
+# --- Importaciones de la base de datos ---
+from database import db_session, Usuario, Pronostico, ProduccionCaptura, ActivityLog, OutputData, init_db
+
+# --- Configuración de la App Flask ---
 app = Flask(__name__)
-app.secret_key = 'clave-secreta-muy-larga-y-dificil-de-adivinar-para-produccion'
+app.secret_key = os.environ.get('SECRET_KEY', 'una-clave-secreta-muy-segura-para-produccion')
 
-# --- Configuración de la base de datos con SQLAlchemy ---
-db_session = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
+# --- Inicialización de la Base de Datos ---
+# Se asegura de que las tablas se creen en el contexto de la aplicación
+with app.app_context():
+    init_db()
 
 @app.teardown_appcontext
 def shutdown_session(exception=None):
@@ -61,8 +56,7 @@ def log_activity(action, details="", area_grupo=None):
             area_grupo=area_grupo
         )
         db_session.add(log_entry)
-        # NOTA: El commit se hará al final de la operación principal
-    except exc.SQLAlchemyError as e:
+    except Exception as e:
         db_session.rollback()
         print(f"Error al registrar actividad: {e}")
 
@@ -116,7 +110,7 @@ def login():
             session['role'] = user.role
             session['csrf_token'] = secrets.token_hex(16)
             log_activity("Inicio de sesión", f"El usuario '{user.username}' (Rol: {user.role}) ha iniciado sesión.", area_grupo='Sistema')
-            db_session.commit() # Commit para el log de login
+            db_session.commit()
             return redirect(url_for('dashboard'))
         else:
             flash('Usuario o contraseña incorrectos.', 'danger')
@@ -128,7 +122,7 @@ def login():
 def logout():
     username = session.get('username', 'Desconocido')
     log_activity("Cierre de sesión", f"El usuario '{username}' ha cerrado la sesión.", area_grupo='Sistema')
-    db_session.commit() # Commit para el log de logout
+    db_session.commit()
     session.clear()
     flash('Has cerrado sesión correctamente.', 'info')
     return redirect(url_for('login'))
@@ -379,7 +373,7 @@ def reportes():
                            is_admin=is_admin)
 
 
-# --- Rutas de Interacción y Administración ---
+# --- Ruta de Captura (MODIFICADA) ---
 @app.route('/captura/<group>', methods=['GET', 'POST'])
 @login_required
 @csrf_required
@@ -400,98 +394,77 @@ def captura(group):
         
         now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
-        # --- CAMBIO LOG: Obtener datos existentes ANTES de modificar ---
-        non_output_areas = [a for a in areas_list if a != 'Output']
-        existing_data = get_capture_data(group_upper, non_output_areas, selected_date)
-        existing_output_data = get_output_data(group_upper, selected_date)
-        
         pronosticos_a_guardar, produccion_a_guardar = [], []
-        changes_detected = False
 
         try:
-            for area in non_output_areas:
+            # Recopilar datos de pronósticos y producción
+            for area in [a for a in areas_list if a != 'Output']:
                 area_slug = to_slug(area)
                 for turno in NOMBRES_TURNOS:
                     new_val = request.form.get(f'pronostico_{area_slug}_{to_slug(turno)}')
                     if new_val and new_val.isdigit():
                         pronosticos_a_guardar.append({'fecha': selected_date, 'grupo': group_upper, 'area': area, 'turno': turno, 'valor_pronostico': int(new_val)})
-                        
-                        # --- CAMBIO LOG: Comparar y registrar cambio de pronóstico ---
-                        old_val = existing_data.get(area, {}).get(f'Pronostico_{to_slug(turno)}', '')
-                        if str(old_val or '') != new_val:
-                            changes_detected = True
-                            log_activity(
-                                action="Modificación de Pronóstico",
-                                details=f"Fecha: {selected_date}, Área: {area}, Turno: {turno}. Valor cambió de '{old_val or 'Vacío'}' a '{new_val}'.",
-                                area_grupo=group_upper
-                            )
 
                 for hora in sum(HORAS_TURNO.values(), []):
                     new_val = request.form.get(f'produccion_{area_slug}_{hora}')
                     if new_val and new_val.isdigit():
                         produccion_a_guardar.append({'fecha': selected_date, 'grupo': group_upper, 'area': area, 'hora': hora, 'valor_producido': int(new_val), 'usuario_captura': session.get('username'), 'fecha_captura': now_str})
-                        
-                        # --- CAMBIO LOG: Comparar y registrar cambio de producción ---
-                        old_val = existing_data.get(area, {}).get(f'Produccion_{hora}', '')
-                        if str(old_val or '') != new_val:
-                            changes_detected = True
-                            log_activity(
-                                action="Modificación de Producción",
-                                details=f"Fecha: {selected_date}, Área: {area}, Hora: {hora}. Valor cambió de '{old_val or 'Vacío'}' a '{new_val}'.",
-                                area_grupo=group_upper
-                            )
-            
-            # --- Lógica de guardado y log para Output ---
+
+            # Guardar pronósticos
+            if pronosticos_a_guardar:
+                stmt = pg_insert(Pronostico).values(pronosticos_a_guardar)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['fecha', 'grupo', 'area', 'turno'],
+                    set_=dict(valor_pronostico=stmt.excluded.valor_pronostico)
+                )
+                db_session.execute(stmt)
+
+            # Guardar producción
+            if produccion_a_guardar:
+                stmt = pg_insert(ProduccionCaptura).values(produccion_a_guardar)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['fecha', 'grupo', 'area', 'hora'],
+                    set_=dict(
+                        valor_producido=stmt.excluded.valor_producido,
+                        usuario_captura=stmt.excluded.usuario_captura,
+                        fecha_captura=stmt.excluded.fecha_captura
+                    )
+                )
+                db_session.execute(stmt)
+
+            # Guardar datos de Output
             new_pronostico_output = request.form.get('pronostico_output')
             new_produccion_output = request.form.get('produccion_output')
-            
-            # --- CAMBIO LOG: Comparar y registrar cambio de Output ---
-            old_pronostico_output = existing_output_data.get('pronostico', '')
-            old_produccion_output = existing_output_data.get('output', '')
-            
-            if str(old_pronostico_output or '') != str(new_pronostico_output or ''):
-                 changes_detected = True
-                 log_activity("Modificación de Output (Pronóstico)", f"Fecha: {selected_date}. Valor cambió de '{old_pronostico_output or 'Vacío'}' a '{new_pronostico_output}'.", area_grupo=group_upper)
-            
-            if str(old_produccion_output or '') != str(new_produccion_output or ''):
-                changes_detected = True
-                log_activity("Modificación de Output (Producción)", f"Fecha: {selected_date}. Valor cambió de '{old_produccion_output or 'Vacío'}' a '{new_produccion_output}'.", area_grupo=group_upper)
-
-
-            # --- Ejecutar las sentencias de guardado ---
-            if pronosticos_a_guardar:
-                stmt = sqlite_insert(Pronostico).values(pronosticos_a_guardar)
-                stmt = stmt.on_conflict_do_update(index_elements=['fecha', 'grupo', 'area', 'turno'], set_=dict(valor_pronostico=stmt.excluded.valor_pronostico))
-                db_session.execute(stmt)
-
-            if produccion_a_guardar:
-                stmt = sqlite_insert(ProduccionCaptura).values(produccion_a_guardar)
-                stmt = stmt.on_conflict_do_update(index_elements=['fecha', 'grupo', 'area', 'hora'], set_=dict(valor_producido=stmt.excluded.valor_producido, usuario_captura=stmt.excluded.usuario_captura, fecha_captura=stmt.excluded.fecha_captura))
-                db_session.execute(stmt)
-
             if (new_pronostico_output and new_pronostico_output.isdigit()) or (new_produccion_output and new_produccion_output.isdigit()):
                 output_values = {'fecha': selected_date, 'grupo': group_upper, 'pronostico': int(new_pronostico_output or 0), 'output': int(new_produccion_output or 0), 'usuario_captura': session.get('username'), 'fecha_captura': now_str}
-                stmt = sqlite_insert(OutputData).values(output_values)
-                stmt = stmt.on_conflict_do_update(index_elements=['fecha', 'grupo'], set_=dict(pronostico=stmt.excluded.pronostico, output=stmt.excluded.output, usuario_captura=stmt.excluded.usuario_captura, fecha_captura=stmt.excluded.fecha_captura))
+                stmt = pg_insert(OutputData).values(output_values)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['fecha', 'grupo'],
+                    set_=dict(
+                        pronostico=stmt.excluded.pronostico,
+                        output=stmt.excluded.output,
+                        usuario_captura=stmt.excluded.usuario_captura,
+                        fecha_captura=stmt.excluded.fecha_captura
+                    )
+                )
                 db_session.execute(stmt)
             
-            db_session.commit() # Commit final para guardar datos y logs
-            
-            if changes_detected:
-                flash('Cambios guardados y registrados exitosamente.', 'success')
-            else:
-                flash('No se detectaron cambios para guardar.', 'info')
+            db_session.commit()
+            flash('Cambios guardados exitosamente.', 'success')
 
-        except exc.SQLAlchemyError as e:
+        except Exception as e:
             db_session.rollback()
             flash(f"Error al guardar en la base de datos: {e}", 'danger')
+            print(f"ERROR: {e}") # Para ver el error en los logs de Render
             
         return redirect(url_for('captura', group=group, fecha=selected_date))
 
+    # --- Método GET ---
     selected_date = request.args.get('fecha', datetime.now().strftime('%Y-%m-%d'))
     data = get_capture_data(group_upper, [a for a in areas_list if a != 'Output'], selected_date)
     output_data = get_output_data(group_upper, selected_date)
     return render_template('captura_group.html', areas=areas_list, horas_turno=HORAS_TURNO, nombres_turnos=NOMBRES_TURNOS, selected_date=selected_date, data=data, output_data=output_data, group_name=group_upper)
+
 
 @app.route('/submit_reason', methods=['POST'])
 @login_required
@@ -518,7 +491,6 @@ def submit_reason():
             pronostico_entry.usuario_razon = username
             pronostico_entry.fecha_razon = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
-            # --- CAMBIO LOG: Mensaje más detallado para la razón ---
             if old_reason != reason:
                 reason_snippet = (reason[:75] + '...') if len(reason) > 75 else reason
                 details = f"Fecha: {date}, Área: {area}, Turno: {turno_name}. Se añadió/actualizó la razón a: '{reason_snippet}'"
@@ -528,10 +500,8 @@ def submit_reason():
             return jsonify({'status': 'success', 'message': 'Razón guardada exitosamente.'})
         else:
             return jsonify({'status': 'error', 'message': 'No se encontró el registro de pronóstico para actualizar.'}), 404
-    except exc.SQLAlchemyError as e:
-        db_session.rollback()
-        return jsonify({'status': 'error', 'message': f'Error en la base de datos: {e}'}), 500
     except Exception as e:
+        db_session.rollback()
         return jsonify({'status': 'error', 'message': f'Ocurrió un error inesperado: {e}'}), 500
 
 @app.route('/export_excel/<group>')

@@ -21,6 +21,7 @@ except Exception as e:
     exit(1)
 
 # --- DEFINICIÓN DE LAS TABLAS (MODELOS) ---
+# (Las clases de las tablas no cambian, se omiten por brevedad)
 class Pronostico(Base):
     __tablename__ = 'pronosticos'
     id = Column(Integer, primary_key=True, index=True)
@@ -73,16 +74,14 @@ class OutputData(Base):
     fecha_captura = Column(String(30))
     __table_args__ = (UniqueConstraint('fecha', 'grupo', name='_fecha_grupo_uc'),)
 
-# --- INICIALIZACIÓN AUTOMÁTICA DE LA BASE DE DATOS ---
-# Este código se ejecuta una vez cuando la aplicación arranca.
+
+# --- FUNCIÓN DE INICIALIZACIÓN ---
 def init_db():
     try:
         print("Inicializando esquema de la base de datos...")
-        # create_all no sobreescribe tablas existentes, es seguro ejecutarlo siempre.
         Base.metadata.create_all(bind=engine)
         print("Esquema inicializado.")
 
-        # Añade los usuarios iniciales si no existen
         db = SessionLocal()
         print("Verificando usuarios iniciales...")
         initial_users = [
@@ -104,6 +103,3 @@ def init_db():
         db.close()
     except Exception as e:
         print(f"Ocurrió un error durante la inicialización de la base de datos: {e}")
-
-# Llamamos a la función de inicialización aquí para que se ejecute al iniciar la app
-init_db()
