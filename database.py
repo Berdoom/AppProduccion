@@ -82,7 +82,8 @@ class OutputData(Base):
     __table_args__ = (UniqueConstraint('fecha', 'grupo', name='_fecha_grupo_uc'),)
 
 
-def init_db_main():
+# CORRECCIÓN: Se renombra la función a 'init_db'
+def init_db():
     """
     Crea las tablas en la base de datos si no existen
     y añade los usuarios iniciales.
@@ -120,5 +121,5 @@ if __name__ == '__main__':
     # Esta sección se ejecuta solo cuando corres el script directamente
     # para inicializar la base de datos.
     print("Inicializando la base de datos...")
-    init_db_main()
+    init_db()
     print("¡Proceso de inicialización finalizado!")
