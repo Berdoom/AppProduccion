@@ -1,33 +1,36 @@
 import os
-from sqlalchemy import create_engine, Column, Integer, String, Text, UniqueConstraint
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base, scoped_session
 from werkzeug.security import generate_password_hash
 
 # --- CONFIGURACIÓN DE BASE DE DATOS ---
+# Lee la variable de entorno 'DATABASE_URL'. Si no existe, usa una base de datos SQLite local.
 DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///produccion.db')
 
 try:
+    # Configuración del motor de la base de datos
     if DATABASE_URL.startswith('postgres'):
         engine = create_engine(DATABASE_URL)
     else:
         engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
         
-    # Crea una fábrica de sesiones
+    # Crea una fábrica de sesiones y una sesión segura para cada solicitud web
     session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    # Crea una sesión con ámbito para asegurar que cada hilo/solicitud tenga su propia sesión
     db_session = scoped_session(session_factory)
 
+    # Base para los modelos declarativos
     Base = declarative_base()
-    # Asocia la sesión a la Base para que las consultas funcionen
     Base.query = db_session.query_property()
-
-    print("Conexión a la base de datos establecida exitosamente.")
+    print("Conexión a la base de datos configurada exitosamente.")
 
 except Exception as e:
-    print(f"Error al conectar con la base de datos: {e}")
+    print(f"FATAL: Error al configurar la conexión a la base de datos: {e}")
     exit(1)
 
 # --- DEFINICIÓN DE LAS TABLAS (MODELOS) ---
+# (Las clases de las tablas no cambian, se omiten por brevedad pero deben estar aquí)
+from sqlalchemy import Column, Integer, String, Text, UniqueConstraint
+
 class Pronostico(Base):
     __tablename__ = 'pronosticos'
     id = Column(Integer, primary_key=True, index=True)
@@ -80,15 +83,11 @@ class OutputData(Base):
     fecha_captura = Column(String(30))
     __table_args__ = (UniqueConstraint('fecha', 'grupo', name='_fecha_grupo_uc'),)
 
-
 # --- FUNCIÓN DE INICIALIZACIÓN ---
 def init_db():
     try:
         print("Inicializando esquema de la base de datos...")
-        Base.metadata.create_all(bind=engine)
-        print("Esquema inicializado.")
-
-        # Usamos la sesión con ámbito para las operaciones
+        Base.metadata.create_all(bind=engine) # Crea tablas si no existen
         db = db_session()
         print("Verificando usuarios iniciales...")
         initial_users = [
@@ -96,20 +95,14 @@ def init_db():
             ('fhp_user', 'fhp_pass', 'FHP'),
             ('GCL1909', '1909', 'ADMIN')
         ]
-
         for username, password, role in initial_users:
-            user_exists = db.query(Usuario).filter(Usuario.username == username).first()
-            if not user_exists:
-                password_hash = generate_password_hash(password)
-                new_user = Usuario(username=username, password_hash=password_hash, role=role)
-                db.add(new_user)
+            if not db.query(Usuario).filter(Usuario.username == username).first():
+                db.add(Usuario(username=username, password_hash=generate_password_hash(password), role=role))
                 print(f"Usuario '{username}' creado.")
-        
         db.commit()
-        print("Verificación de usuarios completada.")
-        db_session.remove() # Cerramos la sesión
+        print("Base de datos lista.")
     except Exception as e:
-        print(f"Ocurrió un error durante la inicialización de la base de datos: {e}")
-        db_session.rollback()
-
-# NO LLAMAR A init_db() AQUÍ. Se llama desde app.py
+        print(f"ERROR durante la inicialización de la base de datos: {e}")
+        db.rollback()
+    finally:
+        db_session.remove()

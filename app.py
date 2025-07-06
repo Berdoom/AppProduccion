@@ -25,7 +25,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'una-clave-secreta-muy-segura-para-produccion')
 
 # --- Inicialización de la Base de Datos ---
-# Se asegura de que las tablas se creen en el contexto de la aplicación
+# Llama a la función init_db una vez, dentro del contexto de la aplicación
 with app.app_context():
     init_db()
 
@@ -373,7 +373,7 @@ def reportes():
                            is_admin=is_admin)
 
 
-# --- Ruta de Captura (MODIFICADA) ---
+# --- Ruta de Captura (MODIFICADA PARA POSTGRESQL) ---
 @app.route('/captura/<group>', methods=['GET', 'POST'])
 @login_required
 @csrf_required
@@ -454,8 +454,8 @@ def captura(group):
 
         except Exception as e:
             db_session.rollback()
+            print(f"ERROR AL GUARDAR EN LA BASE DE DATOS: {e}")
             flash(f"Error al guardar en la base de datos: {e}", 'danger')
-            print(f"ERROR: {e}") # Para ver el error en los logs de Render
             
         return redirect(url_for('captura', group=group, fecha=selected_date))
 
