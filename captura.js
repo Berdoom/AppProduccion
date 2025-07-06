@@ -1,35 +1,41 @@
-// static/js/captura.js (Versión Responsiva)
-
 document.addEventListener('DOMContentLoaded', () => {
-    let hasUnsavedChanges = false;
-    const productionForm = document.getElementById('productionForm');
-
-    if (productionForm) {
-        productionForm.addEventListener('input', () => { hasUnsavedChanges = true; });
-        productionForm.addEventListener('submit', () => { hasUnsavedChanges = false; });
-    }
-
-    window.addEventListener('beforeunload', (e) => {
-        if (hasUnsavedChanges) {
-            e.preventDefault();
-            e.returnValue = '';
-        }
-    });
-
-    // Calcular totales para todas las áreas al cargar la página
-    if (typeof AREAS_JS !== 'undefined') {
-        AREAS_JS.forEach(area => {
-            calculateTotals(toSlug(area));
+    // --- Lógica para la vista de Escritorio ---
+    if (document.querySelector('.desktop-view')) {
+        FLASK_DATA.areas.forEach(area => {
+            calculateDesktopTotals(toSlug(area));
+        });
+        // Recalcular al cambiar cualquier valor
+        document.querySelector('.desktop-view').addEventListener('input', (e) => {
+            if (e.target.matches('input[type="number"]')) {
+                const areaRow = e.target.closest('tr');
+                if (areaRow) {
+                    calculateDesktopTotals(areaRow.dataset.areaSlug);
+                }
+            }
         });
     }
 
-    // Manejar la rotación del ícono de flecha en el acordeón
-    $('.collapse').on('shown.bs.collapse', function () {
-        $(this).prev('.area-card-header').find('.arrow-icon').css('transform', 'rotate(0deg)');
-    });
-    $('.collapse').on('hidden.bs.collapse', function () {
-        $(this).prev('.area-card-header').find('.arrow-icon').css('transform', 'rotate(-90deg)');
-    });
+    // --- Lógica para la nueva vista Móvil ---
+    const areaList = document.getElementById('mobile-area-list');
+    const detailView = document.getElementById('mobile-detail-view');
+
+    if (areaList && detailView) {
+        // Evento para mostrar el detalle de un área
+        areaList.addEventListener('click', (e) => {
+            e.preventDefault();
+            const target = e.target.closest('.mobile-area-item');
+            if (target) {
+                const areaSlug = target.dataset.areaSlug;
+                const areaName = target.dataset.areaName;
+                showAreaDetail(areaSlug, areaName);
+            }
+        });
+
+        // Evento para volver a la lista de áreas
+        document.getElementById('back-to-list-btn').addEventListener('click', () => {
+            showAreaList();
+        });
+    }
 });
 
 function toSlug(text) {
@@ -37,105 +43,72 @@ function toSlug(text) {
 }
 
 function handleDateChange() {
-    const form = document.getElementById('productionForm');
-    const group = form.dataset.group;
     const fecha = document.getElementById('fecha').value;
-
-    if (!group) {
-        console.error("Error: El atributo 'data-group' no está definido en el formulario.");
-        return;
-    }
+    const group = document.getElementById('productionForm').dataset.group;
     window.location.href = `/captura/${group.toLowerCase()}?fecha=${fecha}`;
 }
 
-/**
- * Calcula y actualiza los totales para un área específica, adaptado a la estructura de tarjetas.
- * @param {string} areaSlug - El slug del área a calcular.
- */
-function calculateTotals(areaSlug) {
-    const areaCard = document.querySelector(`.area-card[data-area-slug="${areaSlug}"]`);
-    if (!areaCard) return;
-
-    let totalPronosticoArea = 0;
+// --- Funciones para la Vista de Escritorio ---
+function calculateDesktopTotals(areaSlug) {
     let totalProduccionArea = 0;
+    const areaRow = document.querySelector(`.desktop-view tr[data-area-slug="${areaSlug}"]`);
+    if (!areaRow) return;
 
-    NOMBRES_TURNOS_JS.forEach(turnoName => {
-        const turnoSlug = toSlug(turnoName);
-        const pronosticoTurnoInput = areaCard.querySelector(`input[name="pronostico_${areaSlug}_${turnoSlug}"]`);
-        if (pronosticoTurnoInput) {
-            totalPronosticoArea += parseInt(pronosticoTurnoInput.value) || 0;
-        }
-        
-        let totalProduccionTurno = 0;
-        HORAS_TURNO_JS[turnoName].forEach(hora => {
-            const produccionInput = areaCard.querySelector(`input[name="produccion_${areaSlug}_${hora}"]`);
-            if (produccionInput) {
-                totalProduccionTurno += parseInt(produccionInput.value) || 0;
-            }
-        });
-        
-        const totalTurnoSpan = areaCard.querySelector(`#total_produccion_turno_${areaSlug}_${turnoSlug}`);
-        if (totalTurnoSpan) {
-            totalTurnoSpan.innerText = totalProduccionTurno;
-        }
-        totalProduccionArea += totalProduccionTurno;
+    const inputs = areaRow.querySelectorAll('input[name^="produccion_"]');
+    inputs.forEach(input => {
+        totalProduccionArea += parseInt(input.value) || 0;
     });
 
-    const totalPronosticoSpan = areaCard.querySelector(`#total_pronostico_area_${areaSlug}`);
-    if (totalPronosticoSpan) {
-        totalPronosticoSpan.innerText = totalPronosticoArea;
-    }
-
-    const totalProduccionSpan = areaCard.querySelector(`#total_produccion_area_${areaSlug}`);
-    if (totalProduccionSpan) {
-        totalProduccionSpan.innerText = totalProduccionArea;
+    const totalSpan = areaRow.querySelector(`#total_produccion_area_${areaSlug}`);
+    if (totalSpan) {
+        totalSpan.innerText = totalProduccionArea;
     }
 }
 
-// Las funciones setReasonModalData y submitReason no necesitan cambios.
-// (Se omiten por brevedad, son idénticas a la versión anterior)
-function setReasonModalData(button) {
-    document.getElementById('modalAreaName').innerText = button.dataset.areaName;
-    document.getElementById('modalTurnoName').innerText = button.dataset.turnoName;
-    document.getElementById('modalDate').value = button.dataset.date;
-    document.getElementById('modalArea').value = button.dataset.areaName;
-    document.getElementById('modalTurno').value = button.dataset.turnoName;
-    document.getElementById('reasonText').value = '';
+// --- Funciones para la Vista Móvil ---
+function showAreaList() {
+    document.getElementById('mobile-area-list').style.display = 'block';
+    document.getElementById('mobile-detail-view').style.display = 'none';
 }
 
-function submitReason() {
-    const reasonText = document.getElementById('reasonText').value;
-    if (!reasonText.trim()) {
-        alert('La razón no puede estar vacía.');
-        return;
-    }
+function showAreaDetail(areaSlug, areaName) {
+    document.getElementById('mobile-area-list').style.display = 'none';
+    document.getElementById('mobile-detail-view').style.display = 'block';
+    document.getElementById('detail-area-name').innerText = areaName;
 
-    $('#reasonModal').modal('hide');
-    
-    const form = document.getElementById('productionForm');
-    const submitUrl = form.dataset.submitReasonUrl;
-    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
-    const group = form.dataset.group;
+    const formContent = document.getElementById('detail-form-content');
+    formContent.innerHTML = ''; // Limpiar contenido anterior
 
-    $.ajax({
-        url: submitUrl,
-        type: "POST",
-        data: {
-            csrf_token: csrfToken,
-            date: document.getElementById('modalDate').value,
-            area: document.getElementById('modalArea').value,
-            group: group,
-            reason: reasonText,
-            turno_name: document.getElementById('modalTurno').value
-        },
-        success: function(response) {
-            alert(response.message);
-            if (response.status === 'success') {
-                location.reload();
-            }
-        },
-        error: function() {
-            alert('Error de conexión. No se pudo guardar la razón.');
-        }
+    FLASK_DATA.nombres_turnos.forEach(turnoName => {
+        const turnoSlug = toSlug(turnoName);
+        const turnoSection = document.createElement('div');
+        turnoSection.className = 'turno-section-mobile';
+        
+        let turnoHTML = `<h5 class="turno-title-mobile">${turnoName}</h5>`;
+
+        // Input de Pronóstico
+        const pronosticoName = `pronostico_${areaSlug}_${turnoSlug}`;
+        const pronosticoValue = FLASK_DATA.initial_data[areaName]?.[`Pronostico_${turnoSlug}`] || '';
+        turnoHTML += `
+            <div class="form-group">
+                <label>Pronóstico</label>
+                <input type="number" name="${pronosticoName}" value="${pronosticoValue}" min="0" class="form-control pronostico-input">
+            </div>
+        `;
+
+        // Inputs de Producción por hora
+        FLASK_DATA.horas_turno[turnoName].forEach(hora => {
+            const produccionName = `produccion_${areaSlug}_${hora}`;
+            const produccionValue = FLASK_DATA.initial_data[areaName]?.[`Produccion_${hora}`] || '';
+            turnoHTML += `
+                <div class="form-group">
+                    <label>Producción ${hora}</label>
+                    <input type="number" name="${produccionName}" value="${produccionValue}" min="0" class="form-control">
+                </div>
+            `;
+        });
+
+        turnoSection.innerHTML = turnoHTML;
+        formContent.appendChild(turnoSection);
     });
 }

@@ -1,4 +1,4 @@
-/* static/css/style.css (Versión Responsiva) */
+/* static/css/style.css (Versión Responsiva Definitiva) */
 
 :root {
     --nidec-green: #24b817;
@@ -16,6 +16,7 @@ body {
     overflow-x: hidden; /* Evita el scroll horizontal indeseado */
 }
 
+/* --- ESTILOS DEL LAYOUT PRINCIPAL (MENÚ, ETC.) --- */
 #wrapper {
     display: flex;
     transition: all 0.4s ease;
@@ -36,124 +37,119 @@ body {
 }
 
 #page-content-wrapper {
+    width: 100%;
     min-width: 100vw;
 }
 
 #wrapper.toggled #page-content-wrapper {
     min-width: calc(100vw - 250px);
-    width: calc(100vw - 250px);
-}
-
-.sidebar-heading {
-    padding: 1.2rem 1.25rem;
-    font-size: 1.2rem;
-    font-weight: 700;
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-}
-
-.sidebar-section-title {
-    padding: .5rem 1.25rem;
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    margin-top: 1rem;
-}
-
-.list-group-item {
-    border: 0;
-    border-radius: 0;
-    color: var(--text-dark);
-    font-weight: 500;
-    padding: 1rem 1.25rem;
-}
-
-.list-group-item.active, .list-group-item:hover {
-    background-color: #e9f8e8 !important;
-    color: var(--primary-dark) !important;
-    border-left: 4px solid var(--primary);
-}
-
-.list-group-item i {
-    color: var(--text-muted);
-}
-.list-group-item:hover i, .list-group-item.active i {
-    color: var(--primary-dark);
 }
 
 .content-container {
     padding: 2rem;
 }
 
-.page-header {
-    font-size: 1.8rem;
-    font-weight: 700;
-    margin-bottom: 1.5rem;
-    color: var(--text-dark);
+/* --- BARRA DE ACCIONES FIJA --- */
+.action-bar {
+    background: #f8f9fa;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #dee2e6;
+    position: sticky;
+    top: 0;
+    z-index: 1020;
 }
-
-/* Estilos para la página de captura */
-.area-card {
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    margin-bottom: 1rem;
-    overflow: hidden;
-}
-
-.area-card-header {
-    background-color: var(--light-gray);
-    padding: 1rem;
-    font-weight: 700;
-    cursor: pointer;
+.action-bar-content {
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
-.area-card-header:hover {
-    background-color: #e2e6ea;
+
+/* --- LÓGICA PARA MOSTRAR/OCULTAR VISTAS --- */
+.desktop-view { display: none; }
+.mobile-view { display: block; }
+
+@media (min-width: 992px) {
+    .desktop-view { display: block; }
+    .mobile-view { display: none; }
+    #page-content-wrapper { min-width: 0; }
 }
 
-.area-card-header .arrow-icon {
-    transition: transform 0.3s ease;
+/* --- ESTILOS PARA LA VISTA DE ESCRITORIO --- */
+.production-table-desktop {
+    font-size: 0.9rem;
+    margin-top: 1.5rem;
+}
+.production-table-desktop input {
+    min-width: 70px;
+    text-align: center;
+    border-radius: 4px;
+}
+.production-table-desktop .pronostico-input {
+    background-color: #e9f8e8;
+    font-weight: 500;
+}
+.production-table-desktop .area-name-cell,
+.production-table-desktop .area-name-header {
+    position: sticky;
+    left: 0;
+    background-color: #f8f9fa;
+    z-index: 2;
+}
+.production-table-desktop thead .area-name-header {
+    z-index: 3;
 }
 
-.area-card-header.collapsed .arrow-icon {
-    transform: rotate(-90deg);
-}
-
-.area-card-body {
-    padding: 1.5rem;
-    border-top: 1px solid var(--border-color);
-}
-
-.turno-section {
-    margin-bottom: 1.5rem;
-    padding-bottom: 1.5rem;
+/* --- ESTILOS PARA LA NUEVA VISTA MÓVIL --- */
+.mobile-area-item {
+    padding: 1rem;
+    font-size: 1.1rem;
+    font-weight: 500;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     border-bottom: 1px solid #eee;
 }
-.turno-section:last-child {
-    border-bottom: 0;
-    margin-bottom: 0;
-    padding-bottom: 0;
+
+.detail-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #dee2e6;
+}
+.detail-header h4 {
+    margin: 0;
+    margin-left: 1rem;
+    font-size: 1.25rem;
 }
 
-.turno-title {
+#detail-form-content .form-group {
+    margin-bottom: 1.25rem;
+}
+#detail-form-content .form-group label {
     font-weight: 500;
-    margin-bottom: 1rem;
+    color: #495057;
+}
+
+#detail-form-content .turno-section-mobile {
+    margin-bottom: 2rem;
+    padding: 1.25rem;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #eee;
+}
+#detail-form-content .turno-title-mobile {
+    font-size: 1.2rem;
+    font-weight: 700;
     color: var(--primary);
+    margin-bottom: 1rem;
+    text-align: center;
 }
 
-/* Estilos para tablas responsivas */
-.table-responsive {
-    display: block;
-    width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+/* --- OTROS ESTILOS (OUTPUT, LOGIN, ETC.) --- */
+.output-section {
+    border-top: 2px solid var(--primary);
 }
-
-/* Login Page */
 .login-page-container {
     display: flex;
     align-items: center;
@@ -170,20 +166,4 @@ body {
     border-radius: 12px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.1);
     text-align: center;
-}
-
-/* Media Queries para Responsividad */
-@media(min-width: 768px) {
-    #sidebar-wrapper {
-        margin-left: 0;
-    }
-
-    #page-content-wrapper {
-        min-width: 0;
-        width: 100%;
-    }
-
-    #wrapper.toggled #sidebar-wrapper {
-        margin-left: -250px;
-    }
 }
