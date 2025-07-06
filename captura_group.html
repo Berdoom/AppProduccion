@@ -1,0 +1,130 @@
+{% extends "layout.html" %}
+
+{% block title %}Captura de Producción - {{ group_name }}{% endblock %}
+{% block page_header %}Captura de Producción {{ group_name }}{% endblock %}
+
+{% block content %}
+<div class="content-section">
+    <form id="productionForm" action="{{ url_for('captura', group=group_name.lower()) }}" method="POST" data-submit-reason-url="{{ url_for('submit_reason') }}" data-group="{{ group_name }}" data-baseUrl="{{ url_for('captura', group=group_name.lower()) }}">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        
+        <div class="form-row align-items-center mb-4">
+            <div class="col-md-4 col-sm-6">
+                <label for="fecha" class="font-weight-bold">Fecha:</label>
+                <input type="date" class="form-control" id="fecha" name="fecha" value="{{ selected_date | e }}" onchange="handleDateChange()">
+            </div>
+            <div class="col-md-8 col-sm-6 text-right">
+                 <button type="submit" class="btn btn-lg btn-success"><i class="fas fa-save mr-2"></i>Guardar Cambios</button>
+            </div>
+        </div>
+        
+        <div id="accordion">
+            {% for area in areas if area != 'Output' %}
+            <div class="area-card" data-area-slug="{{ area | slug }}">
+                <div class="area-card-header" data-toggle="collapse" data-target="#collapse-{{ area | slug }}" aria-expanded="false" aria-controls="collapse-{{ area | slug }}">
+                    <span>{{ area }}</span>
+                    <div class="d-flex align-items-center">
+                        <span class="badge badge-secondary mr-3">Pronóstico: <strong id="total_pronostico_area_{{ area | slug }}">0</strong></span>
+                        <span class="badge badge-primary">Producido: <strong id="total_produccion_area_{{ area | slug }}">0</strong></span>
+                        <i class="fas fa-chevron-down arrow-icon ml-3"></i>
+                    </div>
+                </div>
+
+                <div id="collapse-{{ area | slug }}" class="collapse" data-parent="#accordion">
+                    <div class="area-card-body">
+                        <div class="row">
+                            {% for turno_name in nombres_turnos %}
+                            <div class="col-md-4 turno-section">
+                                <h5 class="turno-title">{{ turno_name }}</h5>
+                                <div class="form-group">
+                                    <label>Pronóstico</label>
+                                    <input type="number" name="pronostico_{{ area | slug }}_{{ turno_name | slug }}"
+                                           value="{{ data.get(area, {}).get('Pronostico_' + (turno_name | slug), '') | e }}"
+                                           min="0" class="form-control pronostico-turno-input"
+                                           oninput="calculateTotals('{{ area | slug }}')">
+                                </div>
+                                {% for hora in horas_turno[turno_name] %}
+                                <div class="form-group">
+                                    <label>Producción {{ hora }}</label>
+                                    <input type="number" name="produccion_{{ area | slug }}_{{ hora }}"
+                                           value="{{ data.get(area, {}).get('Produccion_' + hora, '') | e }}"
+                                           min="0" class="form-control" oninput="calculateTotals('{{ area | slug }}')">
+                                </div>
+                                {% endfor %}
+                                <hr>
+                                <div class="d-flex justify-content-between font-weight-bold">
+                                    <span>Total Turno:</span>
+                                    <span id="total_produccion_turno_{{ area | slug }}_{{ turno_name | slug }}">0</span>
+                                </div>
+                                {% if data.get(area, {}).get('needs_reason_' + (turno_name | slug)) %}
+                                    <button type="button" class="btn btn-warning btn-sm btn-block mt-2" title="Registrar razón" data-toggle="modal" data-target="#reasonModal" data-area-name="{{ area | e }}" data-date="{{ selected_date | e }}" data-turno-name="{{ turno_name | e }}" onclick="setReasonModalData(this)">
+                                       <i class="fas fa-exclamation-triangle fa-fw mr-1"></i> Registrar Razón
+                                    </button>
+                                {% elif data.get(area, {}).get('razon_desviacion_' + (turno_name | slug)) %}
+                                    <span class="badge badge-success mt-2 d-block">Razón Registrada</span>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+
+            <!-- Tarjeta para Output -->
+            <div class="area-card">
+                <div class="area-card-header" data-toggle="collapse" data-target="#collapse-output" aria-expanded="true" aria-controls="collapse-output">
+                    <span>Producción Final (Output)</span>
+                    <i class="fas fa-chevron-down arrow-icon ml-3"></i>
+                </div>
+                <div id="collapse-output" class="collapse show" data-parent="#accordion">
+                    <div class="area-card-body">
+                         <div class="row">
+                            <div class="col-md-6 form-group">
+                                <label>Pronóstico Diario</label>
+                                <input type="number" name="pronostico_output" class="form-control" value="{{ output_data.pronostico | e }}" min="0">
+                            </div>
+                            <div class="col-md-6 form-group">
+                                <label>Output Diario</label>
+                                <input type="number" name="produccion_output" class="form-control" value="{{ output_data.output | e }}" min="0">
+                            </div>
+                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Modals (sin cambios) -->
+<div class="modal fade" id="reasonModal" tabindex="-1" aria-labelledby="reasonModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="reasonModalLabel">Razón de Desviación para <strong id="modalAreaName"></strong> - <strong id="modalTurnoName"></strong></h5>
+                <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">×</span></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="modalDate"><input type="hidden" id="modalArea"><input type="hidden" id="modalTurno">
+                <div class="form-group">
+                    <label for="reasonText">Explica la razón de la desviación:</label>
+                    <textarea class="form-control" id="reasonText" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-primary" onclick="submitReason()">Enviar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const AREAS_JS = {{ (areas | reject('equalto', 'Output') | list) | tojson }};
+    const HORAS_TURNO_JS = {{ horas_turno | tojson }};
+    const NOMBRES_TURNOS_JS = {{ nombres_turnos | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/captura.js') }}"></script>
+{% endblock %}
